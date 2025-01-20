@@ -1,0 +1,11 @@
+<resources>
+    <!--
+A custom theme that ensures no translucent background.
+We also inherit from MediaRouter's parent or an AppCompat theme
+so the MediaRouteButton can read relevant attributes.
+    -->
+    <style name="MyNonTranslucentTheme" parent="@style/Theme.AppCompat.Light.NoActionBar">
+        <item name="android:windowIsTranslucent">false</item>
+        <item name="android:windowBackground">@android:color/white</item>
+    </style>
+</resources>
