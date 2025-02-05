@@ -1,14 +1,26 @@
 PODS:
   - cast_plus_plugin (0.0.1):
     - Flutter
+    - google-cast-sdk-no-bluetooth (~> 4.8.0)
   - Flutter (1.0.0)
+  - google-cast-sdk-no-bluetooth (4.8.0):
+    - google-cast-sdk-no-bluetooth/Core (= 4.8.0)
+    - Protobuf (~> 3.13)
+  - google-cast-sdk-no-bluetooth/Core (4.8.0):
+    - Protobuf (~> 3.13)
   - integration_test (0.0.1):
     - Flutter
+  - Protobuf (3.29.3)
 
 DEPENDENCIES:
   - cast_plus_plugin (from `.symlinks/plugins/cast_plus_plugin/ios`)
   - Flutter (from `Flutter`)
   - integration_test (from `.symlinks/plugins/integration_test/ios`)
+
+SPEC REPOS:
+  trunk:
+    - google-cast-sdk-no-bluetooth
+    - Protobuf
 
 EXTERNAL SOURCES:
   cast_plus_plugin:
@@ -19,10 +31,12 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/integration_test/ios"
 
 SPEC CHECKSUMS:
-  cast_plus_plugin: 38fb7f536e5bf6cc8018f5d6c7b79282f879c72c
+  cast_plus_plugin: 25c5484afe24b46b832fefa6246da2e6c5ab5dd9
   Flutter: e0871f40cf51350855a761d2e70bf5af5b9b5de7
+  google-cast-sdk-no-bluetooth: 23206cb79029beaeb610a93559f2ff4f65255797
   integration_test: 252f60fa39af5e17c3aa9899d35d908a0721b573
+  Protobuf: e2de96d939c642ce8da186343ff8929b35223212
 
-PODFILE CHECKSUM: 819463e6a0290f5a72f145ba7cde16e8b6ef0796
+PODFILE CHECKSUM: 7bb08e8bd89bec0588bdb44b8f8bbb6ec0b86ee0
 
 COCOAPODS: 1.16.2

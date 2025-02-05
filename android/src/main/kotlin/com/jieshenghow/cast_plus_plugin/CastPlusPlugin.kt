@@ -12,7 +12,9 @@ import android.util.Log
 
 // Google Cast imports
 import com.google.android.gms.cast.framework.CastContext
+import com.google.android.gms.cast.framework.CastSession
 import com.google.android.gms.cast.framework.CastButtonFactory
+import com.google.android.gms.cast.framework.SessionManagerListener
 import com.google.android.gms.cast.MediaInfo
 import com.google.android.gms.cast.MediaLoadRequestData
 
@@ -20,18 +22,21 @@ class CastPlusPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityA
 
     private lateinit var channel: MethodChannel
     private var activity: Activity? = null
+    private var castContext: CastContext? = null
+    private lateinit var applicationContext: Context
 
-    override fun onAttachedToEngine(@NonNull binding: FlutterPlugin.FlutterPluginBinding) {
+    override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+        applicationContext = binding.applicationContext
         channel = MethodChannel(binding.binaryMessenger, "cast_plus_plugin")
         channel.setMethodCallHandler(this)
+        castContext = CastContext.getSharedInstance(binding.applicationContext)
 
-        binding
-            .platformViewRegistry
-            .registerViewFactory("cast_button_platform_view", CastButtonPlatformViewFactory())
+        binding.platformViewRegistry.registerViewFactory("cast_button_platform_view", CastButtonPlatformViewFactory())
     }
 
-    override fun onDetachedFromEngine(@NonNull binding: FlutterPlugin.FlutterPluginBinding) {
+    override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel.setMethodCallHandler(null)
+        castContext = null
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
@@ -40,42 +45,52 @@ class CastPlusPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityA
                 initializeCast()
                 result.success(null)
             }
-
             "showCastPicker" -> {
                 showCastPickerInternal()
                 result.success(null)
             }
-
             "castUrl" -> {
                 val url = call.argument<String>("url") ?: ""
                 castUrlInternal(url)
                 result.success(null)
             }
-
             "stopCasting" -> {
                 stopCastingInternal()
                 result.success(null)
             }
-
+            "getAvailableCastDevices" -> {
+                val devices = getAvailableCastDevice()
+                result.success(devices)
+            }
+            "castToDevice" -> {
+                val deviceId = call.argument<String>("deviceId")
+                val url = call.argument<String>("url")
+                if (deviceId != null && url != null) {
+                    castToDevice(deviceId, url, result)
+                } else {
+                    result.error("INVALID_ARGUMENT", "deviceId and url are required", null)
+                }
+            }
+            "stopDeviceCasting" -> {
+                stopDeviceCasting()
+                result.success(null)
+            }
             else -> {
                 result.notImplemented()
             }
         }
     }
 
-    //region ActivityAware
+    //region ActivityAware implementations
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
         activity = binding.activity
     }
-
     override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
         activity = binding.activity
     }
-
     override fun onDetachedFromActivityForConfigChanges() {
         activity = null
     }
-
     override fun onDetachedFromActivity() {
         activity = null
     }
@@ -92,35 +107,27 @@ class CastPlusPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityA
     }
 
     private fun showCastPickerInternal() {
-        // Typically you place a Cast button in your activity layout,
-        // then the user taps it to see the device picker.
         activity?.let { showCustomRoutePicker(it) }
     }
 
     private fun castUrlInternal(url: String) {
-        // Ensure we have a valid CastContext
         val castContext = CastContext.getSharedInstance() ?: run {
             Log.w("CastPlusPlugin", "CastContext is null. Can't cast URL.")
             return
         }
-
         val session = castContext.sessionManager.currentCastSession
         val remoteMediaClient = session?.remoteMediaClient
         if (remoteMediaClient == null) {
             Log.w("CastPlusPlugin", "No active cast session or remoteMediaClient is null.")
             return
         }
-
-        // Build the media info
         val media = MediaInfo.Builder(url)
             .setStreamType(MediaInfo.STREAM_TYPE_BUFFERED)
-            .setContentType("video/mp4") // or "application/x-mpegURL" for HLS
+            .setContentType("video/mp4")
             .build()
-
         val mediaLoadRequestData = MediaLoadRequestData.Builder()
             .setMediaInfo(media)
             .build()
-
         remoteMediaClient.load(mediaLoadRequestData)
     }
 
@@ -134,9 +141,7 @@ class CastPlusPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityA
 
     private fun showCustomRoutePicker(context: Context) {
         val mediaRouter = androidx.mediarouter.media.MediaRouter.getInstance(context)
-
-        // Build a route selector that matches your receiver app ID (e.g., default media receiver)
-        val castContext = com.google.android.gms.cast.framework.CastContext.getSharedInstance() ?: return
+        val castContext = CastContext.getSharedInstance() ?: return
         val selector = androidx.mediarouter.media.MediaRouteSelector.Builder()
             .addControlCategory(
                 com.google.android.gms.cast.CastMediaControlIntent.categoryForCast(
@@ -144,48 +149,142 @@ class CastPlusPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityA
                 )
             )
             .build()
-
-        // Add a callback that listens for route discovery
-        // (You might do this in 'initializeCast()' or on plugin startup instead of here)
-        mediaRouter.addCallback(selector, object : androidx.mediarouter.media.MediaRouter.Callback() {
-            override fun onRouteAdded(
-                router: androidx.mediarouter.media.MediaRouter,
-                route: androidx.mediarouter.media.MediaRouter.RouteInfo
-            ) {
-                // route discovered
-            }
-
-            override fun onRouteRemoved(
-                router: androidx.mediarouter.media.MediaRouter,
-                route: androidx.mediarouter.media.MediaRouter.RouteInfo
-            ) {
-                // route removed
-            }
-        }, androidx.mediarouter.media.MediaRouter.CALLBACK_FLAG_REQUEST_DISCOVERY)
-
-        // Collect current routes
+        mediaRouter.addCallback(
+            selector,
+            object : androidx.mediarouter.media.MediaRouter.Callback() {
+                override fun onRouteAdded(
+                    router: androidx.mediarouter.media.MediaRouter,
+                    route: androidx.mediarouter.media.MediaRouter.RouteInfo
+                ) {
+                    // route discovered
+                }
+                override fun onRouteRemoved(
+                    router: androidx.mediarouter.media.MediaRouter,
+                    route: androidx.mediarouter.media.MediaRouter.RouteInfo
+                ) {
+                    // route removed
+                }
+            },
+            androidx.mediarouter.media.MediaRouter.CALLBACK_FLAG_REQUEST_DISCOVERY
+        )
         val allRoutes = mediaRouter.routes
         val castRoutes = allRoutes.filter { route ->
-            // Exclude phone route, etc.
-            // Check route.supportsControlCategory(...) if you want more fine-grained filtering
+            // Filtering routes based on connection state; adjust as needed.
             route.connectionState == 0 || route.connectionState == 2
         }
-
         if (castRoutes.isEmpty()) {
-            // Show some "No devices found" toast or dialog
+            // Optionally, show a toast or dialog indicating no devices were found.
             return
         }
-
-        // Build a simple AlertDialog with the route names
         val routeNames = castRoutes.map { it.name }.toTypedArray()
-
         android.app.AlertDialog.Builder(context)
             .setTitle("Select a Cast Device")
             .setItems(routeNames) { _, which ->
                 val chosen = castRoutes[which]
-                // Select the route
                 mediaRouter.selectRoute(chosen)
             }
             .show()
+    }
+
+    private fun getAvailableCastDevice(): List<Map<String, String>> {
+        val context = activity ?: applicationContext
+        val mediaRouter = androidx.mediarouter.media.MediaRouter.getInstance(context)
+        val receiverAppId = castContext?.castOptions?.receiverApplicationId
+            ?: com.google.android.gms.cast.CastMediaControlIntent.DEFAULT_MEDIA_RECEIVER_APPLICATION_ID
+        val selector = androidx.mediarouter.media.MediaRouteSelector.Builder()
+            .addControlCategory(
+                com.google.android.gms.cast.CastMediaControlIntent.categoryForCast(receiverAppId)
+            )
+            .build()
+        val routes = mediaRouter.routes.filter { routeInfo -> routeInfo.matchesSelector(selector) }
+        return routes.map { routeInfo ->
+            // Note: Using hashCode() as an ID is not ideal but is kept here to revert to your original behavior.
+            mapOf("id" to routeInfo.hashCode().toString(), "name" to routeInfo.name)
+        }
+    }
+
+    private fun stopDeviceCasting(){
+        castContext?.sessionManager?.endCurrentSession(true)
+    }
+
+    // Revised castToDevice method using a SessionManagerListener
+    private fun castToDevice(deviceId: String, url: String, result: MethodChannel.Result) {
+        val context = activity ?: applicationContext
+        val mediaRouter = androidx.mediarouter.media.MediaRouter.getInstance(context)
+        val receiverAppId = castContext?.castOptions?.receiverApplicationId
+            ?: com.google.android.gms.cast.CastMediaControlIntent.DEFAULT_MEDIA_RECEIVER_APPLICATION_ID
+        val selector = androidx.mediarouter.media.MediaRouteSelector.Builder()
+            .addControlCategory(
+                com.google.android.gms.cast.CastMediaControlIntent.categoryForCast(receiverAppId)
+            )
+            .build()
+        val routes = mediaRouter.routes.filter { routeInfo -> routeInfo.matchesSelector(selector) }
+        // Use the same method of ID generation as in getAvailableCastDevice()
+        val selectedRoute = routes.firstOrNull { routeInfo ->
+            routeInfo.hashCode().toString() == deviceId
+        }
+
+        if (selectedRoute != null) {
+            mediaRouter.selectRoute(selectedRoute)
+            val sessionManager = castContext?.sessionManager
+            if (sessionManager == null) {
+                result.error("CAST_ERROR", "CastContext session manager is null", null)
+                return
+            }
+            sessionManager.addSessionManagerListener(object : SessionManagerListener<CastSession> {
+                override fun onSessionStarted(session: CastSession, sessionId: String) {
+                    loadMedia(session, url, result)
+                    sessionManager.removeSessionManagerListener(this, CastSession::class.java)
+                }
+                override fun onSessionResumed(session: CastSession, wasSuspended: Boolean) {
+                    loadMedia(session, url, result)
+                    sessionManager.removeSessionManagerListener(this, CastSession::class.java)
+                }
+                override fun onSessionStarting(session: CastSession) {}
+                override fun onSessionStartFailed(session: CastSession, error: Int) {
+                    result.error("CAST_ERROR", "Unable to start session", null)
+                    sessionManager.removeSessionManagerListener(this, CastSession::class.java)
+                }
+                override fun onSessionEnding(session: CastSession) {}
+                override fun onSessionEnded(session: CastSession, error: Int) {}
+                override fun onSessionResuming(session: CastSession, sessionId: String) {}
+                override fun onSessionResumeFailed(session: CastSession, error: Int) {
+                    result.error("CAST_ERROR", "Unable to resume session", null)
+                    sessionManager.removeSessionManagerListener(this, CastSession::class.java)
+                }
+
+                override fun onSessionSuspended(p0: CastSession, p1: Int) {
+                    TODO("Not yet implemented")
+                }
+            }, CastSession::class.java)
+        } else {
+            result.error("DEVICE_NOT_FOUND", "No device found with the given id", null)
+        }
+    }
+
+    private fun loadMedia(session: CastSession, url: String, result: MethodChannel.Result) {
+        val remoteMediaClient = session.remoteMediaClient
+        if (remoteMediaClient == null) {
+            result.error("CAST_ERROR", "Remote media client is null", null)
+            return
+        }
+        val mediaInfo = MediaInfo.Builder(url)
+            .setContentType("video/mp4")
+            .build()
+        val requestData = MediaLoadRequestData.Builder()
+            .setMediaInfo(mediaInfo)
+            .build()
+        remoteMediaClient.load(requestData)
+        result.success(null)
+    }
+
+    private fun showCastPicker(){
+        activity?.runOnUiThread {
+            try {
+                // Custom implementation to show a cast picker if needed.
+            } catch (e: Exception){
+                Log.e("CastPlusPlugin", "Error showing cast picker", e)
+            }
+        }
     }
 }
