@@ -199,7 +199,7 @@ class CastPlusPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityA
         val routes = mediaRouter.routes.filter { routeInfo -> routeInfo.matchesSelector(selector) }
         return routes.map { routeInfo ->
             // Note: Using hashCode() as an ID is not ideal but is kept here to revert to your original behavior.
-            mapOf("id" to routeInfo.hashCode().toString(), "name" to routeInfo.name)
+            mapOf("deviceId" to routeInfo.hashCode().toString(), "deviceName" to routeInfo.name, "deviceUniqueId" to routeInfo.id)
         }
     }
 
