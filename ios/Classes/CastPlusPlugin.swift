@@ -104,10 +104,9 @@ public class CastPlusPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
                let deviceId = args["deviceId"] as? String,
                let urlString = args["url"] as? String,
                let deviceUniqueId = args["deviceUniqueId"] as? String,
+               let videoTitle = args["videoTitle"] as? String,
                let url = URL(string: urlString) {
-                print(deviceId)
-                print(url)
-                castToDevice(deviceId: deviceId, url: url, deviceUniqueId: deviceUniqueId, result: result)
+                castToDevice(deviceId: deviceId, url: url, deviceUniqueId: deviceUniqueId, videoTitle: videoTitle, result: result)
             } else {
                 result(FlutterError(code: "INVALID_ARGUMENT", message: "deviceId and url are required", details: nil))
             }
@@ -187,7 +186,7 @@ public class CastPlusPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
         backgroundPlayer = nil
     }
 
-    private func castToDevice(deviceId: String, url: URL, deviceUniqueId: String, result: @escaping FlutterResult) {
+    private func castToDevice(deviceId: String, url: URL, deviceUniqueId: String, videoTitle: String, result: @escaping FlutterResult) {
         // 1. Get the GCKDevice object for the device ID.
         let discoveryManager = GCKCastContext.sharedInstance().discoveryManager
         print("Discovery is running: \(discoveryManager.discoveryState)")
@@ -209,7 +208,7 @@ public class CastPlusPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
         let builder = GCKMediaInformationBuilder(contentURL: url)
         builder.streamType = .buffered
         builder.contentType = "video/mp4"
-        builder.metadata = createMetData()
+        builder.metadata = createMetData(videoTitle: videoTitle)
         let mediaInformation = builder.build()
         
         sessionManager.currentSession?.remoteMediaClient?.loadMedia(mediaInformation)
@@ -225,9 +224,9 @@ public class CastPlusPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
         }
     }
 
-    private func createMetData() -> GCKMediaMetadata {
+    private func createMetData(videoTitle: String) -> GCKMediaMetadata {
         let metaData = GCKMediaMetadata(metadataType: .movie)
-        metaData.setString("Video title", forKey: kGCKMetadataKeyTitle)
+        metaData.setString(videoTitle, forKey: kGCKMetadataKeyTitle)
         return metaData
     }
 
