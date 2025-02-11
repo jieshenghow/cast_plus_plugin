@@ -52,11 +52,13 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _castToDevice(CastDevice device) async {
-    const sampleVideoUrl = 'https://agorartcfob.sd-rtn.com/ab1ed5159ee944a58b7827b2498067e2/2D89C3DEA6A829D1E0630100007FBA4C.m3u8?token=007eJxTYHh8gXGr9oIOsV8lgk2r7t3bOtE29%2BsMdX09zvTJSjFPGtcpMCQmGaammBqaWqamWpqYJJpaJJlbGJknGZlYWhiYmacaqe9bmm6gxcCQd3uxDSMDBIL4CgxGLhaWzsYuro5mjhZGli6GrgZmxgaGBkBg7ubkaOLMzGBqbAAAgeAlOA%3D%3D&remoteUid=991179939&userUid=530';
+    const sampleVideoUrl =
+        'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8';
     try {
       print("cast to device");
-      await CastPlusPlugin.castToDevice(
-          sampleVideoUrl, device.deviceId, device.deviceUniqueId);
+      // await CastPlusPlugin.castToDevice(
+      //     sampleVideoUrl, device.deviceId, device.deviceUniqueId);
+      await CastPlusPlugin.castToDevice(url: sampleVideoUrl, deviceId: device.deviceId, deviceUniqueId: device.deviceUniqueId, videoTitle: "test 123");
       print("set is casting to true");
       setState(() {
         _isCasting = true;

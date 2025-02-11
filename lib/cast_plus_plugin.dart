@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 class CastPlusPlugin {
   static const MethodChannel _channel = MethodChannel('cast_plus_plugin');
   static const EventChannel _eventChannel =
-  EventChannel('cast_plus_plugin/deviceUpdates');
+      EventChannel('cast_plus_plugin/deviceUpdates');
 
   /// Returns a stream of cast device list updates.
   static Stream<List<CastDevice>> get deviceUpdateStream {
@@ -23,16 +23,20 @@ class CastPlusPlugin {
 
   static Future<List<CastDevice>> getAvailableCastDevices() async {
     final List<dynamic> devices =
-    await _channel.invokeMethod('getAvailableCastDevices');
+        await _channel.invokeMethod('getAvailableCastDevices');
     return devices
         .map((device) => CastDevice.fromMap(Map<String, dynamic>.from(device)))
         .toList();
   }
 
-  static Future<void> castToDevice(
-      String url, String deviceId, String deviceUniqueId) async {
-    await _channel.invokeMethod('castToDevice',
-        {'url': url, 'deviceId': deviceId, 'deviceUniqueId': deviceUniqueId});
+  static Future<void> castToDevice({required String url, required String deviceId,
+    required String deviceUniqueId, required String videoTitle}) async {
+    await _channel.invokeMethod('castToDevice', {
+      'url': url,
+      'deviceId': deviceId,
+      'deviceUniqueId': deviceUniqueId,
+      'videoTitle': videoTitle
+    });
   }
 
   static Future<void> castToAirPlay(String url) async {
@@ -50,12 +54,16 @@ class CastPlusPlugin {
     // Add your Android implementation if required.
   }
 }
+
 class CastDevice {
   final String deviceId;
   final String deviceName;
   final String deviceUniqueId;
 
-  CastDevice({required this.deviceId, required this.deviceName, required this.deviceUniqueId});
+  CastDevice(
+      {required this.deviceId,
+      required this.deviceName,
+      required this.deviceUniqueId});
 
   factory CastDevice.fromMap(Map<String, dynamic> map) {
     return CastDevice(
