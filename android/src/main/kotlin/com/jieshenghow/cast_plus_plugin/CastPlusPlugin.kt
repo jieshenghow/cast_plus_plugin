@@ -31,7 +31,10 @@ class CastPlusPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityA
         channel.setMethodCallHandler(this)
         castContext = CastContext.getSharedInstance(binding.applicationContext)
 
-        binding.platformViewRegistry.registerViewFactory("cast_button_platform_view", CastButtonPlatformViewFactory())
+        binding.platformViewRegistry.registerViewFactory(
+            "cast_button_platform_view",
+            CastButtonPlatformViewFactory()
+        )
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
@@ -45,36 +48,44 @@ class CastPlusPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityA
                 initializeCast()
                 result.success(null)
             }
+
             "showCastPicker" -> {
                 showCastPickerInternal()
                 result.success(null)
             }
+
             "castUrl" -> {
                 val url = call.argument<String>("url") ?: ""
                 castUrlInternal(url)
                 result.success(null)
             }
+
             "stopCasting" -> {
                 stopCastingInternal()
                 result.success(null)
             }
+
             "getAvailableCastDevices" -> {
                 val devices = getAvailableCastDevice()
                 result.success(devices)
             }
+
             "castToDevice" -> {
                 val deviceId = call.argument<String>("deviceId")
                 val url = call.argument<String>("url")
-                if (deviceId != null && url != null) {
-                    castToDevice(deviceId, url, result)
+                val videoTitle = call.argument<String>("videoTitle")
+                if (deviceId != null && url != null && videoTitle != null) {
+                    castToDevice(deviceId, url, videoTitle, result)
                 } else {
                     result.error("INVALID_ARGUMENT", "deviceId and url are required", null)
                 }
             }
+
             "stopDeviceCasting" -> {
                 stopDeviceCasting()
                 result.success(null)
             }
+
             else -> {
                 result.notImplemented()
             }
@@ -85,12 +96,15 @@ class CastPlusPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityA
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
         activity = binding.activity
     }
+
     override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
         activity = binding.activity
     }
+
     override fun onDetachedFromActivityForConfigChanges() {
         activity = null
     }
+
     override fun onDetachedFromActivity() {
         activity = null
     }
@@ -158,6 +172,7 @@ class CastPlusPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityA
                 ) {
                     // route discovered
                 }
+
                 override fun onRouteRemoved(
                     router: androidx.mediarouter.media.MediaRouter,
                     route: androidx.mediarouter.media.MediaRouter.RouteInfo
@@ -199,16 +214,25 @@ class CastPlusPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityA
         val routes = mediaRouter.routes.filter { routeInfo -> routeInfo.matchesSelector(selector) }
         return routes.map { routeInfo ->
             // Note: Using hashCode() as an ID is not ideal but is kept here to revert to your original behavior.
-            mapOf("deviceId" to routeInfo.hashCode().toString(), "deviceName" to routeInfo.name, "deviceUniqueId" to routeInfo.id)
+            mapOf(
+                "deviceId" to routeInfo.hashCode().toString(),
+                "deviceName" to routeInfo.name,
+                "deviceUniqueId" to routeInfo.id
+            )
         }
     }
 
-    private fun stopDeviceCasting(){
+    private fun stopDeviceCasting() {
         castContext?.sessionManager?.endCurrentSession(true)
     }
 
     // Revised castToDevice method using a SessionManagerListener
-    private fun castToDevice(deviceId: String, url: String, result: MethodChannel.Result) {
+    private fun castToDevice(
+        deviceId: String,
+        url: String,
+        videoTitle: String,
+        result: MethodChannel.Result
+    ) {
         val context = activity ?: applicationContext
         val mediaRouter = androidx.mediarouter.media.MediaRouter.getInstance(context)
         val receiverAppId = castContext?.castOptions?.receiverApplicationId
@@ -233,18 +257,21 @@ class CastPlusPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityA
             }
             sessionManager.addSessionManagerListener(object : SessionManagerListener<CastSession> {
                 override fun onSessionStarted(session: CastSession, sessionId: String) {
-                    loadMedia(session, url, result)
+                    loadMedia(session, url,videoTitle ,result)
                     sessionManager.removeSessionManagerListener(this, CastSession::class.java)
                 }
+
                 override fun onSessionResumed(session: CastSession, wasSuspended: Boolean) {
-                    loadMedia(session, url, result)
+                    loadMedia(session, url,videoTitle, result)
                     sessionManager.removeSessionManagerListener(this, CastSession::class.java)
                 }
+
                 override fun onSessionStarting(session: CastSession) {}
                 override fun onSessionStartFailed(session: CastSession, error: Int) {
                     result.error("CAST_ERROR", "Unable to start session", null)
                     sessionManager.removeSessionManagerListener(this, CastSession::class.java)
                 }
+
                 override fun onSessionEnding(session: CastSession) {}
                 override fun onSessionEnded(session: CastSession, error: Int) {}
                 override fun onSessionResuming(session: CastSession, sessionId: String) {}
@@ -262,14 +289,23 @@ class CastPlusPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityA
         }
     }
 
-    private fun loadMedia(session: CastSession, url: String, result: MethodChannel.Result) {
+    private fun loadMedia(
+        session: CastSession,
+        url: String,
+        videoTitle: String,
+        result: MethodChannel.Result
+    ) {
         val remoteMediaClient = session.remoteMediaClient
         if (remoteMediaClient == null) {
             result.error("CAST_ERROR", "Remote media client is null", null)
             return
         }
+        val metadata =
+            com.google.android.gms.cast.MediaMetadata(com.google.android.gms.cast.MediaMetadata.MEDIA_TYPE_MOVIE)
+        metadata.putString(com.google.android.gms.cast.MediaMetadata.KEY_TITLE, videoTitle)
         val mediaInfo = MediaInfo.Builder(url)
             .setContentType("video/mp4")
+            .setMetadata(metadata)
             .build()
         val requestData = MediaLoadRequestData.Builder()
             .setMediaInfo(mediaInfo)
@@ -278,11 +314,11 @@ class CastPlusPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityA
         result.success(null)
     }
 
-    private fun showCastPicker(){
+    private fun showCastPicker() {
         activity?.runOnUiThread {
             try {
                 // Custom implementation to show a cast picker if needed.
-            } catch (e: Exception){
+            } catch (e: Exception) {
                 Log.e("CastPlusPlugin", "Error showing cast picker", e)
             }
         }
