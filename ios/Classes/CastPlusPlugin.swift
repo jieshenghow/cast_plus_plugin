@@ -49,6 +49,8 @@ public class CastPlusPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
     // MARK: - Properties
     private var eventSink: FlutterEventSink?
     private var discoveryListener: CastDiscoveryListener?
+    
+    private var currentSessionListener: CastSessionListener?
 
     // MARK: - Plugin Registration
     public static func register(with registrar: FlutterPluginRegistrar) {
@@ -107,6 +109,7 @@ public class CastPlusPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
                let videoTitle = args["videoTitle"] as? String,
                let url = URL(string: urlString) {
                 castToDevice(deviceId: deviceId, url: url, deviceUniqueId: deviceUniqueId, videoTitle: videoTitle, result: result)
+                result(nil)
             } else {
                 result(FlutterError(code: "INVALID_ARGUMENT", message: "deviceId and url are required", details: nil))
             }
@@ -199,20 +202,21 @@ public class CastPlusPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
 
         // 2. Set up a session listener to handle session events.
         let sessionManager = GCKCastContext.sharedInstance().sessionManager
-        let sessionListener = CastSessionListener(deviceId: deviceId, url: url, flutterResult: result) // Helper class below
+        let sessionListener = CastSessionListener(deviceId: deviceId, url: url, videoTitle: videoTitle, flutterResult: result) // Helper class below
+        self.currentSessionListener = sessionListener
         sessionManager.add(sessionListener)
 
         // 3. Attempt to connect to the device and start a session.
         sessionManager.startSession(with: device)
 
-        let builder = GCKMediaInformationBuilder(contentURL: url)
-        builder.streamType = .buffered
-        builder.contentType = "video/mp4"
-        builder.metadata = createMetData(videoTitle: videoTitle)
-        let mediaInformation = builder.build()
-        
-        sessionManager.currentSession?.remoteMediaClient?.loadMedia(mediaInformation)
-        print("end")
+//        let builder = GCKMediaInformationBuilder(contentURL: url)
+//        builder.streamType = .buffered
+//        builder.contentType = "video/mp4"
+//        builder.metadata = createMetData(videoTitle: videoTitle)
+//        let mediaInformation = builder.build()
+//        
+//        sessionManager.currentSession?.remoteMediaClient?.loadMedia(mediaInformation)
+//        print("end")
         
 
     }
@@ -269,12 +273,14 @@ class CastDiscoveryListener: NSObject, GCKDiscoveryManagerListener {
 class CastSessionListener: NSObject, GCKSessionManagerListener {
     let deviceId: String
     let url: URL
+    let videoTitle: String
     let flutterResult: FlutterResult
     var hasAttemptedLoad = false // Important flag to prevent double loading
 
-    init(deviceId: String, url: URL, flutterResult: @escaping FlutterResult) {
+    init(deviceId: String, url: URL, videoTitle: String, flutterResult: @escaping FlutterResult) {
         self.deviceId = deviceId
         self.url = url
+        self.videoTitle = videoTitle
         self.flutterResult = flutterResult
     }
 
@@ -341,8 +347,7 @@ class CastSessionListener: NSObject, GCKSessionManagerListener {
     // Your createMetData function (placeholder - adapt as needed)
     private func createMetData() -> GCKMediaMetadata {
         let metadata = GCKMediaMetadata(metadataType: .movie) // Or .tvShow, .musicTrack, etc.
-        metadata.setString("Your Title", forKey: kGCKMetadataKeyTitle)
-        metadata.setString("Your Subtitle", forKey: kGCKMetadataKeySubtitle)
+        metadata.setString(videoTitle, forKey: kGCKMetadataKeyTitle)
         // Add more metadata as needed (images, etc.)
         return metadata
     }
