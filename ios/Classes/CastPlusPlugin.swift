@@ -28,6 +28,18 @@ class RoutePickerPlatformView: NSObject, FlutterPlatformView {
     }
 }
 
+class StatusStreamHandler: NSObject, FlutterStreamHandler {
+    func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {
+        CastPlusPlugin.statusSink = events
+        return nil
+    }
+    
+    func onCancel(withArguments arguments: Any?) -> FlutterError? {
+        CastPlusPlugin.statusSink = nil
+        return nil
+    }
+}
+
 // 2) The factory that Flutter uses to create RoutePickerPlatformView instances
 class RoutePickerPlatformViewFactory: NSObject, FlutterPlatformViewFactory {
     func createArgsCodec() -> FlutterMessageCodec & NSObjectProtocol {
@@ -51,6 +63,12 @@ public class CastPlusPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
     private var discoveryListener: CastDiscoveryListener?
     
     private var currentSessionListener: CastSessionListener?
+    
+    public static var statusSink: FlutterEventSink?
+    
+    private static var _sharedInstance: CastPlusPlugin?
+
+
 
     // MARK: - Plugin Registration
     public static func register(with registrar: FlutterPluginRegistrar) {
@@ -81,6 +99,12 @@ public class CastPlusPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
         discoveryManager.add(listener)
         instance.discoveryListener = listener
         discoveryManager.startDiscovery()
+        
+        let statusChannel = FlutterEventChannel(name: "cast_plus_plugin/statusUpdates", binaryMessenger: registrar.messenger())
+        statusChannel.setStreamHandler(StatusStreamHandler())
+        
+        _sharedInstance = instance
+
     }
 
     // MARK: - Method Channel Handler
@@ -209,16 +233,6 @@ public class CastPlusPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
         // 3. Attempt to connect to the device and start a session.
         sessionManager.startSession(with: device)
 
-//        let builder = GCKMediaInformationBuilder(contentURL: url)
-//        builder.streamType = .buffered
-//        builder.contentType = "video/mp4"
-//        builder.metadata = createMetData(videoTitle: videoTitle)
-//        let mediaInformation = builder.build()
-//        
-//        sessionManager.currentSession?.remoteMediaClient?.loadMedia(mediaInformation)
-//        print("end")
-        
-
     }
     
     private func stopDeviceCasting() {
@@ -251,6 +265,17 @@ public class CastPlusPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
             }
         }
     }
+    
+    func sendStatusUpdate(_ status: [String: Any]){
+        CastPlusPlugin.statusSink?(status)
+    }
+    
+    public static func sharedInstance() -> CastPlusPlugin? {
+        // In many cases, you might store your instance in a static property when registering.
+        // For simplicity, you can also use a singleton pattern.
+        return _sharedInstance
+    }
+    
 }
 
 // Custom discovery listener that uses a closure callback to notify updates.
@@ -287,17 +312,26 @@ class CastSessionListener: NSObject, GCKSessionManagerListener {
     // Called when a session has started successfully.
     func sessionManager(_ sessionManager: GCKSessionManager, didStart session: GCKSession) {
         print("Session started with device: \(session.device.friendlyName ?? "")")
+        CastPlusPlugin.sharedInstance()?.sendStatusUpdate([
+            "status": "sessionStarted",
+            "deviceName": session.device.friendlyName ?? ""
+        ])
         loadMedia(session: session)
     }
 
     // Called when an existing session is resumed.
     func sessionManager(_ sessionManager: GCKSessionManager, didResume session: GCKSession) {
         print("Session resumed with device: \(session.device.friendlyName ?? "")")
+        CastPlusPlugin.sharedInstance()?.sendStatusUpdate([
+            "status": "sessionResumed",
+            "deviceName": session.device.friendlyName ?? ""
+        ])
         loadMedia(session: session)
     }
 
     func sessionManager(_ sessionManager: GCKSessionManager, didFailToStart session: GCKSession, withError error: Error) {
         print("Failed to start session: \(error)")
+        CastPlusPlugin.sharedInstance()?.sendStatusUpdate(["status": "sessionStartFailed", "error":error.localizedDescription])
         cleanup()  // remove self from listeners
         flutterResult(FlutterError(code: "session_start_failed",
                                   message: "Failed to start session: \(error.localizedDescription)",
@@ -307,9 +341,14 @@ class CastSessionListener: NSObject, GCKSessionManagerListener {
     func sessionManager(_ sessionManager: GCKSessionManager, didEnd session: GCKSession, withError error: Error?) {
        if let error = error {
            print("Session ended with error: \(error)")
+           CastPlusPlugin.sharedInstance()?.sendStatusUpdate([
+            "status": "sessionEnded",
+            "error": error.localizedDescription
+           ])
            flutterResult(FlutterError(code: "session_ended", message: "Session Ended: \(error.localizedDescription)", details: nil))
        } else {
            print("Session ended normally")
+           CastPlusPlugin.sharedInstance()?.sendStatusUpdate(["status": "sessionEnded"])
            flutterResult(nil) // or a success message as appropriate
        }
         cleanup() //remove self from listeners
@@ -327,6 +366,12 @@ class CastSessionListener: NSObject, GCKSessionManagerListener {
         builder.contentType = "video/mp4" // Adjust if necessary
         builder.metadata = createMetData() // Your existing function
         let mediaInformation = builder.build()
+        
+        CastPlusPlugin.sharedInstance()?.sendStatusUpdate([
+            "status": "mediaLoading",
+            "videoTitle": videoTitle
+        ])
+
 
         // Set up a media listener (optional, but good for progress updates/errors)
         let mediaStatusListener = MediaStatusListener(flutterResult: flutterResult)  //Another Helper
@@ -334,7 +379,8 @@ class CastSessionListener: NSObject, GCKSessionManagerListener {
 
         let request = session.remoteMediaClient?.loadMedia(mediaInformation)
         request?.delegate = mediaStatusListener  // Connect the delegate.
-
+        
+        CastPlusPlugin.sharedInstance()?.sendStatusUpdate(["status": "mediaLoadRequestSent"])
         // Cleanup is essential to avoid memory leaks.  Remove the listener when done.
         GCKCastContext.sharedInstance().sessionManager.remove(self)
 
