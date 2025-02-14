@@ -6,6 +6,8 @@ class CastPlusPlugin {
   static const MethodChannel _channel = MethodChannel('cast_plus_plugin');
   static const EventChannel _eventChannel =
       EventChannel('cast_plus_plugin/deviceUpdates');
+  static const EventChannel _statusChannel =
+      EventChannel('cast_plus_plugin/statusUpdates');
 
   /// Returns a stream of cast device list updates.
   static Stream<List<CastDevice>> get deviceUpdateStream {
@@ -29,8 +31,11 @@ class CastPlusPlugin {
         .toList();
   }
 
-  static Future<void> castToDevice({required String url, required String deviceId,
-    required String deviceUniqueId, required String videoTitle}) async {
+  static Future<void> castToDevice(
+      {required String url,
+      required String deviceId,
+      required String deviceUniqueId,
+      required String videoTitle}) async {
     await _channel.invokeMethod('castToDevice', {
       'url': url,
       'deviceId': deviceId,
@@ -53,6 +58,13 @@ class CastPlusPlugin {
   static Future<void> showCastPicker() async {
     // Add your Android implementation if required.
   }
+
+  static Stream<Map<String, dynamic>> get statusStream {
+    return _statusChannel.receiveBroadcastStream().map((event) {
+      return Map<String, dynamic>.from(event);
+    });
+  }
+
 }
 
 class CastDevice {

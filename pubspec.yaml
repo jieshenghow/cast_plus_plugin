@@ -1,7 +1,7 @@
 name: cast_plus_plugin
 description: "A Flutter plugin that enables your app to seamlessly cast media to supported devices."
-version: 0.0.4
-homepage:
+version: 0.0.5
+homepage: "https://github.com/jieshenghow/cast_plus_plugin"
 
 environment:
   sdk: ^3.5.4

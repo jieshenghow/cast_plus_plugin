@@ -17,6 +17,7 @@ import com.google.android.gms.cast.framework.CastButtonFactory
 import com.google.android.gms.cast.framework.SessionManagerListener
 import com.google.android.gms.cast.MediaInfo
 import com.google.android.gms.cast.MediaLoadRequestData
+import io.flutter.plugin.common.EventChannel
 
 class CastPlusPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware {
 
@@ -24,6 +25,8 @@ class CastPlusPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityA
     private var activity: Activity? = null
     private var castContext: CastContext? = null
     private lateinit var applicationContext: Context
+    private lateinit var statusEventChannel: EventChannel
+    private var statusEventSink: EventChannel.EventSink? = null
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         applicationContext = binding.applicationContext
@@ -35,6 +38,9 @@ class CastPlusPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityA
             "cast_button_platform_view",
             CastButtonPlatformViewFactory()
         )
+
+        statusEventChannel = EventChannel(binding.binaryMessenger, "cast_plus_plugin/statusUpdates")
+        statusEventChannel.setStreamHandler(statusStreamHandler)
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
@@ -255,33 +261,73 @@ class CastPlusPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityA
                 result.error("CAST_ERROR", "CastContext session manager is null", null)
                 return
             }
+            sendStatusUpdate(mapOf("status" to "startingSession", "deviceId" to deviceId))
             sessionManager.addSessionManagerListener(object : SessionManagerListener<CastSession> {
                 override fun onSessionStarted(session: CastSession, sessionId: String) {
-                    loadMedia(session, url,videoTitle ,result)
+                    sendStatusUpdate(
+                        mapOf(
+                            "status" to "sessionStarted",
+                            "deviceName" to (session.castDevice?.friendlyName ?: ""),
+                            "sessionId" to sessionId
+                        )
+                    )
+                    loadMedia(session, url, videoTitle, result)
                     sessionManager.removeSessionManagerListener(this, CastSession::class.java)
                 }
 
                 override fun onSessionResumed(session: CastSession, wasSuspended: Boolean) {
-                    loadMedia(session, url,videoTitle, result)
+                    sendStatusUpdate(
+                        mapOf(
+                            "status" to "sessionResumed",
+                            "deviceName" to (session.castDevice?.friendlyName ?: "")
+                        )
+                    )
+                    loadMedia(session, url, videoTitle, result)
                     sessionManager.removeSessionManagerListener(this, CastSession::class.java)
                 }
 
                 override fun onSessionStarting(session: CastSession) {}
                 override fun onSessionStartFailed(session: CastSession, error: Int) {
+                    sendStatusUpdate(
+                        mapOf(
+                            "status" to "sessionStartFailed",
+                            "error" to error,
+
+                            )
+                    )
                     result.error("CAST_ERROR", "Unable to start session", null)
                     sessionManager.removeSessionManagerListener(this, CastSession::class.java)
                 }
 
                 override fun onSessionEnding(session: CastSession) {}
-                override fun onSessionEnded(session: CastSession, error: Int) {}
+                override fun onSessionEnded(session: CastSession, error: Int) {
+                    sendStatusUpdate(
+                        mapOf(
+                            "status" to "sessionEnded",
+                            "error" to error
+                        )
+                    )
+                }
+
                 override fun onSessionResuming(session: CastSession, sessionId: String) {}
                 override fun onSessionResumeFailed(session: CastSession, error: Int) {
+                    sendStatusUpdate(
+                        mapOf(
+                            "status" to "sessionResumeFailed",
+                            "error" to error
+                        )
+                    )
                     result.error("CAST_ERROR", "Unable to resume session", null)
                     sessionManager.removeSessionManagerListener(this, CastSession::class.java)
                 }
 
                 override fun onSessionSuspended(p0: CastSession, p1: Int) {
-                    TODO("Not yet implemented")
+                    sendStatusUpdate(
+                        mapOf(
+                            "status" to "sessionSuspended",
+                            "reason" to p1
+                        )
+                    )
                 }
             }, CastSession::class.java)
         } else {
@@ -297,9 +343,23 @@ class CastPlusPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityA
     ) {
         val remoteMediaClient = session.remoteMediaClient
         if (remoteMediaClient == null) {
+            sendStatusUpdate(
+                mapOf(
+                    "status" to "error",
+                    "message" to "Remote media client is null"
+                )
+            )
             result.error("CAST_ERROR", "Remote media client is null", null)
             return
         }
+
+        sendStatusUpdate(
+            mapOf(
+                "status" to "mediaLoading",
+                "videoTitle" to videoTitle
+            )
+        )
+
         val metadata =
             com.google.android.gms.cast.MediaMetadata(com.google.android.gms.cast.MediaMetadata.MEDIA_TYPE_MOVIE)
         metadata.putString(com.google.android.gms.cast.MediaMetadata.KEY_TITLE, videoTitle)
@@ -310,6 +370,11 @@ class CastPlusPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityA
         val requestData = MediaLoadRequestData.Builder()
             .setMediaInfo(mediaInfo)
             .build()
+        sendStatusUpdate(
+            mapOf(
+                "status" to "mediaLoadRequestSent"
+            )
+        )
         remoteMediaClient.load(requestData)
         result.success(null)
     }
@@ -322,5 +387,19 @@ class CastPlusPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityA
                 Log.e("CastPlusPlugin", "Error showing cast picker", e)
             }
         }
+    }
+
+    private val statusStreamHandler = object : EventChannel.StreamHandler {
+        override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+            statusEventSink = events
+        }
+
+        override fun onCancel(arguments: Any?) {
+            statusEventSink = null
+        }
+    }
+
+    private fun sendStatusUpdate(status: Map<String, Any>) {
+        statusEventSink?.success(status)
     }
 }
