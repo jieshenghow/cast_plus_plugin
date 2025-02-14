@@ -28,6 +28,23 @@ class _MyAppState extends State<MyApp> {
     CastPlusPlugin.initialize();
     _fetchAvailableDevices();
     _listenForDeviceUpdates();
+    CastPlusPlugin.statusStream.listen((status){
+      print("Received cast status update: $status");
+      // Update your UI based on the status.
+      // For example:
+      if (status['status'] == 'startingSession') {
+        // Show a "connecting" indicator.
+      } else if (status['status'] == 'sessionStarted') {
+        // Update UI to show session started.
+      } else if (status['status'] == 'mediaLoading') {
+        // Show a loading spinner.
+      } else if (status['status'] == 'mediaLoadRequestSent') {
+        // Perhaps hide the spinner.
+      } else if (status['status'] == 'sessionStartFailed' ||
+          status['status'] == 'sessionResumeFailed') {
+        // Show an error message.
+      }
+    });
   }
 
   @override
